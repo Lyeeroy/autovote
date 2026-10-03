@@ -103,7 +103,7 @@ export default function Ready({
     if (!btn) return;
     const r = btn.getBoundingClientRect();
     const w = volPanelRef.current?.offsetWidth || 158;
-    const h = volPanelRef.current?.offsetHeight || 96;
+    const h = volPanelRef.current?.offsetHeight || 52;
     let top = r.bottom + 8;
     if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
     setVolPos({ top, left: Math.max(8, r.right - w) });
@@ -686,7 +686,7 @@ export default function Ready({
                 {Math.round(volume * 100)}%
               </span>
             </div>
-            <input
+<input
               type="range"
               min={0}
               max={100}
@@ -700,9 +700,6 @@ export default function Ready({
               onTouchEnd={onCue}
               className="mt-2 h-4 w-full cursor-pointer accent-moss disabled:cursor-not-allowed disabled:opacity-40"
             />
-            <p className="mt-1.5 text-[11px] leading-[1.5] text-muted">
-              {soundOn ? "" : ""}
-            </p>
           </div>,
           document.body,
         )}

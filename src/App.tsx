@@ -3,7 +3,7 @@ import dawn from "./assets/dawn.jpg";
 import levelup from "./assets/levelup.mp3";
 import Ready from "./components/Ready";
 import Setup from "./components/Setup";
-import { Mark } from "./components/ui";
+import { GithubGlyph, Mark } from "./components/ui";
 import {
   clearAll,
   clearStatus,
@@ -37,6 +37,8 @@ export default function App() {
   const [soundOn, setSoundOn] = useState(() => getSound());
   const [volume, setVolume] = useState(() => getVolume());
   const volumeRef = useRef(volume);
+  const statusRef = useRef(status);
+  const soundOnRef = useRef(soundOn);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -47,27 +49,70 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2200);
   }, []);
 
+  /* the chime — played when a lock window runs out, and as a preview on switch-on */
+  const playCue = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.currentTime = 0;
+    el.volume = volumeRef.current;
+    void el.play().catch(() => {
+      pushToast("Browser blocked the sound — click the page once");
+    });
+  }, [pushToast]);
+
+  const setSound = useCallback(
+    (on: boolean) => {
+      saveSound(on);
+      setSoundOn(on);
+      soundOnRef.current = on;
+      if (on) playCue();
+    },
+    [playCue],
+  );
+
+  /* slider drag: keep it live in memory, stored once the knob is let go */
+  const setVolumeLevel = useCallback((v: number) => {
+    const level = Math.min(1, Math.max(0, v));
+    volumeRef.current = level;
+    setVolume(level);
+  }, []);
+
+  const previewCue = useCallback(() => {
+    saveVolume(volumeRef.current);
+    playCue();
+  }, [playCue]);
+
+  /* every status write goes through here, so the clock always reads fresh data */
+  const commit = useCallback((next: Status) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
   /* one shared clock: cooldowns tick down with no layout shift */
   useEffect(() => {
     const id = window.setInterval(() => {
       const t = Date.now();
       setNow(t);
-      setStatus((prev) => {
-        let changed = false;
-        const next: Status = { ...prev };
-        for (const k of SITES) {
-          const c = next[k];
-          if (c && c.until <= t) {
-            delete next[k];
-            changed = true;
-          }
+      const next: Status = { ...statusRef.current };
+      let changed = false;
+      let justUnlocked = false;
+      for (const k of SITES) {
+        const c = next[k];
+        if (c && c.until <= t) {
+          delete next[k];
+          changed = true;
+          /* a single site coming off cooldown means one vote is ready again */
+          justUnlocked = true;
         }
-        if (changed) saveStatus(next);
-        return changed ? next : prev;
-      });
+      }
+      if (changed) {
+        saveStatus(next);
+        commit(next);
+      }
+      if (justUnlocked && soundOnRef.current) playCue();
     }, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [commit, playCue]);
 
   /* the userscript reports cooldowns back with postMessage */
   useEffect(() => {
@@ -86,79 +131,34 @@ export default function App() {
       if (data.type !== "cooldown") return;
       const site = data.site as SiteId | undefined;
       if (!site || !SITES.includes(site)) return;
-      setStatus((prev) => {
-        const next: Status = { ...prev };
-        if (data.until && data.until > Date.now()) {
-          next[site] = { until: data.until, from: data.from, raw: data.raw };
-        } else {
-          delete next[site];
-        }
-        saveStatus(next);
-        return next;
-      });
+      const next: Status = { ...statusRef.current };
+      if (data.until && data.until > Date.now()) {
+        next[site] = { until: data.until, from: data.from, raw: data.raw };
+      } else {
+        delete next[site];
+      }
+      saveStatus(next);
+      commit(next);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [commit]);
 
   /* keep several tabs in sync */
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STATUS_KEY) setStatus(loadStatus());
+      if (e.key === STATUS_KEY) commit(loadStatus());
       if (e.key === STORAGE_KEY) setNickState(getNick());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [commit]);
 
   useEffect(() => {
     return () => {
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
     };
   }, []);
-
-  /* the chime — played when a lock window runs out, and as a preview on switch-on */
-  const playCue = useCallback(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    el.currentTime = 0;
-    el.volume = volumeRef.current;
-    void el.play().catch(() => {
-      pushToast("Browser blocked the sound — click the page once");
-    });
-  }, [pushToast]);
-
-  const setSound = useCallback(
-    (on: boolean) => {
-      saveSound(on);
-      setSoundOn(on);
-      if (on) playCue();
-    },
-    [playCue],
-  );
-
-  /* slider drag: keep it live in memory, stored once the knob is let go */
-  const setVolumeLevel = useCallback((v: number) => {
-    const level = Math.min(1, Math.max(0, v));
-    volumeRef.current = level;
-    setVolume(level);
-  }, []);
-
-  const previewCue = useCallback(() => {
-    saveVolume(volumeRef.current);
-    playCue();
-  }, [playCue]);
-
-  /* a site left the locked set because its clock ran out — not because it was cleared */
-  const prevStatusRef = useRef<Status>(status);
-  useEffect(() => {
-    const ended = SITES.some((s) => {
-      const before = prevStatusRef.current[s];
-      return !!before && before.until <= now && !status[s];
-    });
-    prevStatusRef.current = status;
-    if (ended && soundOn) playCue();
-  }, [now, status, soundOn, playCue]);
 
   const commitNick = useCallback((n: string) => {
     setNick(n);
@@ -193,6 +193,16 @@ export default function App() {
             <span className="num hidden text-[11px] text-muted sm:block">
               {dateStr}
             </span>
+            <a
+              href="https://github.com/Lyeeroy/autovote"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Source on GitHub"
+              aria-label="Source on GitHub"
+              className="grid h-[26px] w-[26px] place-items-center rounded-full text-muted transition-colors hover:bg-warm hover:text-ink"
+            >
+              <GithubGlyph className="h-[15px] w-[15px]" />
+            </a>
             <span
               className={[
                 "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] text-[11px] font-medium",
@@ -228,13 +238,13 @@ export default function App() {
             onToast={pushToast}
             onClearStatus={() => {
               clearStatus();
-              setStatus(loadStatus());
+              commit({});
               pushToast("Cooldowns cleared");
             }}
             onReset={() => {
               clearAll();
               setNickState("");
-              setStatus({});
+              commit({});
               setView("s1");
               pushToast("Reset complete");
             }}

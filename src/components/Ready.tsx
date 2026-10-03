@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import terrain from "../assets/terrain.jpg";
 import {
   buildUrls,
@@ -17,6 +18,7 @@ import {
   ServerGlyph,
   StatusPill,
   Switch,
+  VolumeGlyph,
 } from "./ui";
 
 type Props = {
@@ -25,6 +27,9 @@ type Props = {
   now: number;
   soundOn: boolean;
   onSound: (on: boolean) => void;
+  volume: number;
+  onVolume: (v: number) => void;
+  onCue: () => void;
   onNick: (n: string) => void;
   onToast: (m: string) => void;
   onClearStatus: () => void;
@@ -74,6 +79,9 @@ export default function Ready({
   now,
   soundOn,
   onSound,
+  volume,
+  onVolume,
+  onCue,
   onNick,
   onToast,
   onClearStatus,
@@ -82,6 +90,60 @@ export default function Ready({
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(nick);
+  const [volOpen, setVolOpen] = useState(false);
+  const [volPos, setVolPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const volBtnRef = useRef<HTMLButtonElement | null>(null);
+  const volPanelRef = useRef<HTMLDivElement | null>(null);
+
+  /* the panel lives in a portal, so it is placed from the button's box */
+  const placeVolume = useCallback(() => {
+    const btn = volBtnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const w = volPanelRef.current?.offsetWidth || 158;
+    const h = volPanelRef.current?.offsetHeight || 96;
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+    setVolPos({ top, left: Math.max(8, r.right - w) });
+  }, []);
+
+  const toggleVolume = () => {
+    setVolOpen((v) => {
+      if (!v) placeVolume();
+      return !v;
+    });
+  };
+
+  /* keep it glued to the button while the page scrolls, dismiss like a dropdown */
+  useEffect(() => {
+    if (!volOpen) return;
+    placeVolume();
+    const onMove = () => placeVolume();
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (
+        !volBtnRef.current?.contains(t) &&
+        !volPanelRef.current?.contains(t)
+      ) {
+        setVolOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setVolOpen(false);
+    };
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [volOpen, placeVolume]);
 
   const urls = buildUrls(nick);
   const hasNick = nick.trim().length > 0;
@@ -97,9 +159,7 @@ export default function Ready({
     (c): c is NonNullable<typeof c> => !!c,
   );
   const anyCD = activeCDs.length > 0;
-  const soonest = anyCD
-    ? Math.min(...activeCDs.map((c) => c.until))
-    : Infinity;
+  const soonest = anyCD ? Math.min(...activeCDs.map((c) => c.until)) : Infinity;
 
   /* one loader per site — how far through its own lock window we are */
   const loaderPct = (c: Cooldown | null) => {
@@ -385,16 +445,35 @@ export default function Ready({
               <div className="min-w-0">
                 <div className="micro">Unlock sound</div>
                 <div className="mt-1 truncate text-[13px] text-muted">
-                  {soundOn
-                    ? "Chimes the moment a cooldown ends"
-                    : "Silent — you only get the visual clock"}
+                  {!soundOn
+                    ? "Off — only the visual clock"
+                    : volume === 0
+                      ? "Volume at zero — silent"
+                      : "Chime when a cooldown ends"}
                 </div>
               </div>
-              <Switch
-                checked={soundOn}
-                onChange={onSound}
-                label="Play a sound when a cooldown ends"
-              />
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  ref={volBtnRef}
+                  type="button"
+                  onClick={toggleVolume}
+                  aria-expanded={volOpen}
+                  aria-label={
+                    volOpen ? "Hide volume slider" : "Show volume slider"
+                  }
+                  className="grid h-[22px] w-[22px] place-items-center rounded-md text-muted transition-colors hover:bg-warm hover:text-ink"
+                >
+                  <VolumeGlyph
+                    muted={!soundOn || volume === 0}
+                    className="h-[15px] w-[15px]"
+                  />
+                </button>
+                <Switch
+                  checked={soundOn}
+                  onChange={onSound}
+                  label="Play a sound when a cooldown ends"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3 px-5 py-4">
@@ -456,7 +535,8 @@ export default function Ready({
                   Start auto chain voting
                 </span>
                 <span className="mt-1.5 block text-[13px] text-white/65">
-                  czech-craft → craftlist → minecraftservery · all sites in one tab
+                  czech-craft → craftlist → minecraftservery · all sites in one
+                  tab
                 </span>
               </span>
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/25">
@@ -590,6 +670,42 @@ export default function Ready({
           </div>
         </div>
       </div>
+
+      {/* the volume popover lives on <body> — the ledger card clips its overflow */}
+      {volOpen &&
+        volPos &&
+        createPortal(
+          <div
+            ref={volPanelRef}
+            style={{ top: volPos.top, left: volPos.left }}
+            className="fixed z-50 w-[158px] rounded-xl border border-rule bg-card p-3 shadow-[0_14px_34px_rgba(12,42,29,0.2)]"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="micro">Volume</span>
+              <span className="num text-[11px] text-muted">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(volume * 100)}
+              disabled={!soundOn}
+              aria-label="Unlock sound volume"
+              onChange={(e) => onVolume(Number(e.target.value) / 100)}
+              onPointerUp={onCue}
+              onKeyUp={onCue}
+              onTouchEnd={onCue}
+              className="mt-2 h-4 w-full cursor-pointer accent-moss disabled:cursor-not-allowed disabled:opacity-40"
+            />
+            <p className="mt-1.5 text-[11px] leading-[1.5] text-muted">
+              {soundOn ? "" : ""}
+            </p>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

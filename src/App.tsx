@@ -9,11 +9,13 @@ import {
   clearStatus,
   getNick,
   getSound,
+  getVolume,
   isSetupDone,
   loadStatus,
   markSetupDone,
   saveSound,
   saveStatus,
+  saveVolume,
   setNick,
   STATUS_KEY,
   STORAGE_KEY,
@@ -33,6 +35,8 @@ export default function App() {
   const [status, setStatus] = useState<Status>(() => loadStatus());
   const [now, setNow] = useState(() => Date.now());
   const [soundOn, setSoundOn] = useState(() => getSound());
+  const [volume, setVolume] = useState(() => getVolume());
+  const volumeRef = useRef(volume);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -118,7 +122,7 @@ export default function App() {
     const el = audioRef.current;
     if (!el) return;
     el.currentTime = 0;
-    el.volume = 0.7;
+    el.volume = volumeRef.current;
     void el.play().catch(() => {
       pushToast("Browser blocked the sound — click the page once");
     });
@@ -132,6 +136,18 @@ export default function App() {
     },
     [playCue],
   );
+
+  /* slider drag: keep it live in memory, stored once the knob is let go */
+  const setVolumeLevel = useCallback((v: number) => {
+    const level = Math.min(1, Math.max(0, v));
+    volumeRef.current = level;
+    setVolume(level);
+  }, []);
+
+  const previewCue = useCallback(() => {
+    saveVolume(volumeRef.current);
+    playCue();
+  }, [playCue]);
 
   /* a site left the locked set because its clock ran out — not because it was cleared */
   const prevStatusRef = useRef<Status>(status);
@@ -205,6 +221,9 @@ export default function App() {
             now={now}
             soundOn={soundOn}
             onSound={setSound}
+            volume={volume}
+            onVolume={setVolumeLevel}
+            onCue={previewCue}
             onNick={commitNick}
             onToast={pushToast}
             onClearStatus={() => {

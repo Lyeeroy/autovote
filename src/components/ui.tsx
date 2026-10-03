@@ -110,6 +110,40 @@ export function StatusPill({
   );
 }
 
+export function VolumeGlyph({
+  muted = false,
+  className = "",
+}: {
+  muted?: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M4 9.4h3.4L12 5.6v12.8L7.4 14.6H4z" />
+      {muted ? (
+        <>
+          <path d="M15.8 9.6l4.4 4.8" />
+          <path d="M20.2 9.6l-4.4 4.8" />
+        </>
+      ) : (
+        <>
+          <path d="M15.7 9.4a3.9 3.9 0 010 5.2" />
+          <path d="M18.4 7.2a7.5 7.5 0 010 9.6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function Switch({
   checked,
   onChange,

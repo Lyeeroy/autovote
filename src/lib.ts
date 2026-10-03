@@ -7,6 +7,8 @@ export const STORAGE_KEY = "majncraft_nickname";
 export const STATUS_KEY = "majncraft_status";
 export const SETUP_DONE_KEY = "majncraft_setup_done";
 export const SOUND_KEY = "majncraft_sound";
+export const VOLUME_KEY = "majncraft_volume";
+export const DEFAULT_VOLUME = 0.7;
 
 export const scriptText = `// ==UserScript==
 // @name         Majncraft Vote Automator
@@ -603,6 +605,26 @@ export function getSound(): boolean {
 export function saveSound(on: boolean): void {
   try {
     localStorage.setItem(SOUND_KEY, on ? "1" : "0");
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** 0..1 */
+export function getVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    if (raw === null) return DEFAULT_VOLUME;
+    const v = Number(raw);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_VOLUME;
+  } catch {
+    return DEFAULT_VOLUME;
+  }
+}
+
+export function saveVolume(v: number): void {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(Math.min(1, Math.max(0, v))));
   } catch {
     /* storage unavailable */
   }

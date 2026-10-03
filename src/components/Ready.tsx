@@ -5,6 +5,7 @@ import {
   fmtCD,
   fmtClock,
   relTime,
+  type Cooldown,
   type SiteId,
   type Status,
 } from "../lib";
@@ -54,6 +55,9 @@ const NOTES: { label: string; body: string }[] = [
   },
 ];
 
+/** window length assumed when a site only tells us the unlock clock, not the lock start */
+const NOMINAL_WINDOW = 2 * 60 * 60 * 1000;
+
 export default function Ready({
   nick,
   status,
@@ -85,15 +89,13 @@ export default function Ready({
     ? Math.min(...activeCDs.map((c) => c.until))
     : Infinity;
 
-  /* how far through the lock window are we */
-  let pct = 100;
-  if (anyCD) {
-    const target =
-      activeCDs.find((c) => c.until === soonest) ?? activeCDs[0];
-    const started = status.updated ?? target.until - 86400000;
-    const total = Math.max(1, target.until - started);
-    pct = Math.min(100, Math.max(0, ((now - started) / total) * 100));
-  }
+  /* one loader per site — how far through its own lock window we are */
+  const loaderPct = (c: Cooldown | null) => {
+    if (!c) return 100;
+    const started = c.from ?? c.until - NOMINAL_WINDOW;
+    const total = Math.max(1, c.until - started);
+    return Math.min(100, Math.max(0, ((now - started) / total) * 100));
+  };
 
   const hero = !hasNick
     ? {
@@ -217,41 +219,53 @@ export default function Ready({
               <p className="mt-3 min-h-[36px] text-[12.5px] leading-[1.5] text-white/78">
                 {anyCD
                   ? activeCDs.length === sites.length
-                    ? "All sites unlock at different times — the shorter one is shown."
+                    ? "All sites unlock at different times — the clock shows the shortest wait, every bar tracks its own site."
                     : `${activeCDs.length} ${activeCDs.length === 1 ? "site is" : "sites are"} on hold. Other sites are open now.`
                   : "Nothing is locked. All lists accept a vote right now."}
               </p>
 
-              <div className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/15">
-                <div
-                  className="h-full rounded-full bg-moss transition-[width] duration-700 ease-out"
-                  style={{ width: pct + "%" }}
-                />
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2.5 border-t border-white/15 pt-4">
+              <div className="mt-5 flex flex-col gap-3.5 border-t border-white/15 pt-4">
                 {sites.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <span className="flex min-w-0 items-center gap-2 text-[12.5px] text-white/80">
+                  <div key={s.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex min-w-0 items-center gap-2 text-[12.5px] text-white/80">
+                        <span
+                          className={[
+                            "h-[5px] w-[5px] shrink-0 rounded-full",
+                            s.cd ? "bg-ochre" : "bg-moss",
+                          ].join(" ")}
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </span>
                       <span
                         className={[
-                          "h-[5px] w-[5px] shrink-0 rounded-full",
+                          "num shrink-0 text-[12px]",
+                          s.cd ? "text-white/85" : "text-white/45",
+                        ].join(" ")}
+                      >
+                        {s.cd ? fmtClock(s.cd.until - now) : "ready"}
+                      </span>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-label={
+                        s.cd
+                          ? s.name + " lock elapsed"
+                          : s.name + " open for voting"
+                      }
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(loaderPct(s.cd))}
+                      className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-white/15"
+                    >
+                      <div
+                        className={[
+                          "h-full rounded-full transition-[width] duration-700 ease-out",
                           s.cd ? "bg-ochre" : "bg-moss",
                         ].join(" ")}
+                        style={{ width: loaderPct(s.cd) + "%" }}
                       />
-                      <span className="truncate">{s.name}</span>
-                    </span>
-                    <span
-                      className={[
-                        "num shrink-0 text-[12px]",
-                        s.cd ? "text-white/85" : "text-white/45",
-                      ].join(" ")}
-                    >
-                      {s.cd ? fmtClock(s.cd.until - now) : "ready"}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>

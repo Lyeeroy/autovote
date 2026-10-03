@@ -64,7 +64,14 @@ export default function App() {
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const data = event.data as
-        | { __majncraft?: number; type?: string; site?: string; until?: number; raw?: string }
+        | {
+            __majncraft?: number;
+            type?: string;
+            site?: string;
+            until?: number;
+            from?: number;
+            raw?: string;
+          }
         | undefined;
       if (!data || data.__majncraft !== 1) return;
       if (data.type !== "cooldown") return;
@@ -73,7 +80,7 @@ export default function App() {
       setStatus((prev) => {
         const next: Status = { ...prev };
         if (data.until && data.until > Date.now()) {
-          next[site] = { until: data.until, raw: data.raw };
+          next[site] = { until: data.until, from: data.from, raw: data.raw };
         } else {
           delete next[site];
         }

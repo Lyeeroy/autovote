@@ -1,5 +1,6 @@
 export type SiteId = "czech" | "craftlist" | "minecraftservery";
-export type Cooldown = { until: number; raw?: string };
+/** `from` = when the lock window opened — absent when the site only exposes an unlock clock */
+export type Cooldown = { until: number; from?: number; raw?: string };
 export type Status = Partial<Record<SiteId, Cooldown>> & { updated?: number };
 
 export const STORAGE_KEY = "majncraft_nickname";
@@ -9,7 +10,7 @@ export const SETUP_DONE_KEY = "majncraft_setup_done";
 export const scriptText = `// ==UserScript==
 // @name         Majncraft Vote Automator
 // @namespace    http://tampermonkey.net/
-// @version      3.4
+// @version      3.5
 // @description  Accurately parses durations vs clock times on Czech-Craft, Craftlist & MinecraftServery.
 // @author       You
 // @match        https://czech-craft.eu/*
@@ -28,10 +29,11 @@ export const scriptText = `// ==UserScript==
     'use strict';
 
     var host = window.location.hostname;
-    console.log('[Majncraft] === BOOT v3.4 ===', host, window.location.href);
+    console.log('[Majncraft] === BOOT v3.5 ===', host, window.location.href);
 
     var bootTime = Date.now();
     var MIN_ACTION_DELAY = 1000;
+    var NOMINAL_WINDOW = 2 * 60 * 60 * 1000;
     function canAct() { return (Date.now() - bootTime) >= MIN_ACTION_DELAY; }
 
     /* ---- reCAPTCHA anchor iframe ---- */
@@ -147,7 +149,7 @@ export const scriptText = `// ==UserScript==
                     var targetUntil = Date.now() + totalMs;
                     var rawClock = formatClock(targetUntil);
                     console.log('[Majncraft] CD via voteHours spans: ' + hrs + 'h ' + mins + 'm (target ' + rawClock + ')');
-                    return { until: targetUntil, raw: rawClock };
+                    return { until: targetUntil, from: targetUntil - totalMs, raw: rawClock };
                 }
             }
         }
@@ -169,7 +171,7 @@ export const scriptText = `// ==UserScript==
                 if (dObj.getTime() > Date.now()) {
                     var bRaw = mBan[1] + '.' + mBan[2] + '.' + mBan[3] + ' ' + mBan[4] + ':' + mBan[5];
                     console.log('[Majncraft] CD via Ban Alert:', bRaw);
-                    return { until: dObj.getTime(), raw: bRaw };
+                    return { until: dObj.getTime(), from: dObj.getTime() - NOMINAL_WINDOW, raw: bRaw };
                 }
             }
         }
@@ -187,7 +189,7 @@ export const scriptText = `// ==UserScript==
                 var durMs = (dH * 3600 + dM * 60 + dS) * 1000;
                 if (durMs > 0) {
                     var u = Date.now() + durMs;
-                    return { until: u, raw: formatClock(u) };
+                    return { until: u, from: u - durMs, raw: formatClock(u) };
                 }
             }
 
@@ -200,7 +202,7 @@ export const scriptText = `// ==UserScript==
                 var wMs = (wh * 3600 + wm * 60 + ws) * 1000;
                 if (wMs > 0) {
                     var wUntil = Date.now() + wMs;
-                    return { until: wUntil, raw: formatClock(wUntil) };
+                    return { until: wUntil, from: wUntil - wMs, raw: formatClock(wUntil) };
                 }
             }
 
@@ -208,12 +210,15 @@ export const scriptText = `// ==UserScript==
             var mClockTarget = txt.match(/(?:znovu|další\\s+hlas|nejdříve|až|bude\\s+možné|odeslat|poslat|hlasovat)[^\\d\\n]{1,40}?(?:v|ve)\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
             if (mClockTarget) {
                 var clkTarget = clockToFutureTime(mClockTarget[1]);
-                if (clkTarget > Date.now()) return { raw: mClockTarget[1], until: clkTarget };
+                if (clkTarget > Date.now()) return { until: clkTarget, from: clkTarget - NOMINAL_WINDOW, raw: mClockTarget[1] };
             }
 
-            // 3d. czech-craft format: "nejdříve v HH:MM(:SS)"
-            var mCC = txt.match(/nejdříve\\s+v\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
-            if (mCC) return { raw: mCC[1], until: clockToFutureTime(mCC[1]) };
+            /* 3d. czech-craft format: "nejdříve v HH:MM(:SS)" */
+            var mCC = txt.match(/nejdříve\s+v\s*(\d{1,2}:\d{2}(?::\d{2})?)/i);
+            if (mCC) {
+                var ccUntil = clockToFutureTime(mCC[1]);
+                return { until: ccUntil, from: ccUntil - NOMINAL_WINDOW, raw: mCC[1] };
+            }
 
             // 3e. Past vote time: "Již jsi hlasoval v 14:30" (add 2h cooldown)
             var mPast = txt.match(/(?:již|už)\\s+(?:j?si|jste|byl|hráč)\\s+hlasoval[^\\d\\n]{1,30}?(?:v|ve)\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
@@ -222,7 +227,7 @@ export const scriptText = `// ==UserScript==
                 var votedAt = new Date();
                 votedAt.setHours(p[0], p[1], p[2] || 0, 0);
                 var futureNext = votedAt.getTime() + 2 * 60 * 60 * 1000;
-                if (futureNext > Date.now()) return { raw: formatClock(futureNext), until: futureNext };
+                if (futureNext > Date.now()) return { until: futureNext, from: votedAt.getTime(), raw: formatClock(futureNext) };
             }
             return null;
         }
@@ -319,7 +324,7 @@ export const scriptText = `// ==UserScript==
         if (acted) return;
         if (typeof cdTimer !== 'undefined') clearInterval(cdTimer);
         console.log('[Majncraft] cooldown on', SITE, '→', cd.raw);
-        report({ type: 'cooldown', site: SITE, until: cd.until, raw: cd.raw });
+        report({ type: 'cooldown', site: SITE, until: cd.until, from: cd.from, raw: cd.raw });
         if (isManual) { acted = true; return; }
         nextInChain();
     }
@@ -337,9 +342,11 @@ export const scriptText = `// ==UserScript==
     /* 1. Page reloaded after submit */
     if (justSubmitted) {
         var postCd = detectCD();
-        var until = postCd ? postCd.until : (Date.now() + 2 * 60 * 60 * 1000);
+        var submittedAt = Date.now();
+        var until = postCd ? postCd.until : (submittedAt + 2 * 60 * 60 * 1000);
+        var from = postCd ? (postCd.from || submittedAt) : submittedAt;
         var rawTime = postCd ? postCd.raw : formatClock(until);
-        report({ type: 'cooldown', site: SITE, until: until, raw: rawTime });
+        report({ type: 'cooldown', site: SITE, until: until, from: from, raw: rawTime });
         if (isManual) { acted = true; return; }
         nextInChain();
         return;
@@ -448,9 +455,10 @@ export const scriptText = `// ==UserScript==
                     clearInterval(pollPostVote);
                     if (typeof cdTimer !== 'undefined') clearInterval(cdTimer);
                     if (acted) return;
-                    var defaultUntil = Date.now() + 2 * 60 * 60 * 1000;
+                    var defaultFrom = Date.now();
+                    var defaultUntil = defaultFrom + 2 * 60 * 60 * 1000;
                     var defaultRaw = formatClock(defaultUntil);
-                    report({ type: 'cooldown', site: 'craftlist', until: defaultUntil, raw: defaultRaw });
+                    report({ type: 'cooldown', site: 'craftlist', until: defaultUntil, from: defaultFrom, raw: defaultRaw });
                     acted = true;
                     if (!isManual) nextInChain();
                 }
@@ -478,9 +486,10 @@ export const scriptText = `// ==UserScript==
                     clearInterval(pollPostVoteServery);
                     if (typeof cdTimer !== 'undefined') clearInterval(cdTimer);
                     if (acted) return;
-                    var serveryUntil = Date.now() + 2 * 60 * 60 * 1000;
+                    var serveryFrom = Date.now();
+                    var serveryUntil = serveryFrom + 2 * 60 * 60 * 1000;
                     var serveryRaw = formatClock(serveryUntil);
-                    report({ type: 'cooldown', site: 'minecraftservery', until: serveryUntil, raw: serveryRaw });
+                    report({ type: 'cooldown', site: 'minecraftservery', until: serveryUntil, from: serveryFrom, raw: serveryRaw });
                     acted = true;
                     if (!isManual) tryCloseAfter(1500);
                 }

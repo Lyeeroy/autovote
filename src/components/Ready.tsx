@@ -8,7 +8,7 @@ import {
   type SiteId,
   type Status,
 } from "../lib";
-import { Arrow, BannerGlyph, ListGlyph, ScriptBlock, StatusPill } from "./ui";
+import { Arrow, BannerGlyph, ListGlyph, ScriptBlock, ServerGlyph, StatusPill } from "./ui";
 
 type Props = {
   nick: string;
@@ -25,17 +25,17 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "01",
     title: "Set the nickname once",
-    body: "It is stored in this browser only. Both vote forms get filled from it, so you never type it again.",
+    body: "It is stored in this browser only. Vote forms get filled from it, so you never type it again.",
   },
   {
     n: "02",
     title: "Start the chain",
-    body: "One tab walks you from czech-craft to craftlist. The script submits what it can and hands you the captchas.",
+    body: "One tab walks you through czech-craft, craftlist, and minecraftservery. The script fills your nick, submits what it can, and hands you the captchas.",
   },
   {
     n: "03",
     title: "Watch the clock",
-    body: "Both lists lock you out for a day after a vote. The panel on the left counts down to the exact unlock time.",
+    body: "Lists lock you out after a vote. The panel on the left counts down to the exact unlock time.",
   },
 ];
 
@@ -76,16 +76,20 @@ export default function Ready({
   };
   const cdCzech = read("czech");
   const cdCraft = read("craftlist");
-  const anyCD = !!(cdCzech || cdCraft);
-  const soonest = Math.min(
-    cdCzech?.until ?? Infinity,
-    cdCraft?.until ?? Infinity,
+  const cdServer = read("minecraftservery");
+  const activeCDs = [cdCzech, cdCraft, cdServer].filter(
+    (c): c is NonNullable<typeof c> => !!c,
   );
+  const anyCD = activeCDs.length > 0;
+  const soonest = anyCD
+    ? Math.min(...activeCDs.map((c) => c.until))
+    : Infinity;
 
   /* how far through the lock window are we */
   let pct = 100;
   if (anyCD) {
-    const target = cdCzech && cdCzech.until === soonest ? cdCzech : (cdCraft ?? cdCzech!);
+    const target =
+      activeCDs.find((c) => c.until === soonest) ?? activeCDs[0];
     const started = status.updated ?? target.until - 86400000;
     const total = Math.max(1, target.until - started);
     pct = Math.min(100, Math.max(0, ((now - started) / total) * 100));
@@ -100,7 +104,7 @@ export default function Ready({
             to open the ticket.
           </>
         ),
-        sub: "Nothing is sent anywhere — it is saved in this browser and used to fill both vote forms automatically.",
+        sub: "Nothing is sent anywhere — it is saved in this browser and used to fill vote forms automatically.",
       }
     : anyCD
       ? {
@@ -114,11 +118,9 @@ export default function Ready({
             </>
           ),
           sub:
-            cdCzech && cdCraft
-              ? "Both lists are cooling down. The shorter one unlocks first — the clock on the left is exact."
-              : cdCzech
-                ? "The chain starts on czech-craft, which is on cooldown. You can still take the craftlist vote now."
-                : "Craftlist is on cooldown. The czech-craft vote is still open if you want to take it manually.",
+            activeCDs.length === 3
+              ? "All lists are cooling down. The shorter one unlocks first — the clock on the left is exact."
+              : `${activeCDs.length} ${activeCDs.length === 1 ? "list is" : "lists are"} cooling down. Other votes are still open if you want to take them manually.`,
         }
       : {
           title: (
@@ -127,7 +129,7 @@ export default function Ready({
               <em className="font-light italic text-pine">{nick}</em>.
             </>
           ),
-          sub: "The chain opens czech-craft first, then hands you over to craftlist. Two captchas, one tab, about forty seconds.",
+          sub: "All vote lists are open. Click below to start the chain or vote manually on any list.",
         };
 
   const sites = [
@@ -146,6 +148,14 @@ export default function Ready({
       href: urls.craftlistManual,
       Glyph: ListGlyph,
       cd: cdCraft,
+    },
+    {
+      id: "minecraftservery" as SiteId,
+      name: "minecraftservery.eu",
+      sub: "Server list · votes reset every 2 hours",
+      href: urls.minecraftserveryManual,
+      Glyph: ServerGlyph,
+      cd: cdServer,
     },
   ];
 
@@ -177,7 +187,7 @@ export default function Ready({
             <div className="relative px-6 pb-5 pt-6">
               <div className="flex items-center justify-between gap-3">
                 <span className="micro micro-light">
-                  {anyCD ? "Next vote in" : "Both lists"}
+                  {anyCD ? "Next vote in" : "All lists"}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span
@@ -206,12 +216,10 @@ export default function Ready({
 
               <p className="mt-3 min-h-[36px] text-[12.5px] leading-[1.5] text-white/78">
                 {anyCD
-                  ? cdCzech && cdCraft
-                    ? "Both sites unlock at different times — the shorter one is shown."
-                    : cdCzech
-                      ? "czech-craft unlocks first, then the chain is complete again."
-                      : "Only craftlist is holding. czech-craft is open now."
-                  : "Nothing is locked. Both lists accept a vote right now."}
+                  ? activeCDs.length === sites.length
+                    ? "All sites unlock at different times — the shorter one is shown."
+                    : `${activeCDs.length} ${activeCDs.length === 1 ? "site is" : "sites are"} on hold. Other sites are open now.`
+                  : "Nothing is locked. All lists accept a vote right now."}
               </p>
 
               <div className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/15">
@@ -329,13 +337,13 @@ export default function Ready({
                 <div className="micro">Cooldowns</div>
                 <div className="mt-1 truncate text-[13px] text-muted">
                   {anyCD
-                    ? ((cdCzech ? 1 : 0) + (cdCraft ? 1 : 0)) +
+                    ? activeCDs.length +
                       " site" +
-                      ((cdCzech ? 1 : 0) + (cdCraft ? 1 : 0) > 1 ? "s" : "") +
+                      (activeCDs.length > 1 ? "s" : "") +
                       " locked"
                     : status.updated
                       ? "Updated " + relTime(now - status.updated)
-                      : "Both sites are ready"}
+                      : "All sites are ready"}
                 </div>
               </div>
               <button
@@ -376,7 +384,7 @@ export default function Ready({
       {/* ─────────────── RIGHT COLUMN ─────────────── */}
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <span className="micro">Daily vote routine · 2 lists</span>
+          <span className="micro">Daily vote routine · 3 lists</span>
           <span className="num text-[11px] text-muted">
             ticket · majncraft / vote
           </span>
@@ -406,7 +414,7 @@ export default function Ready({
                   Start auto chain voting
                 </span>
                 <span className="mt-1.5 block text-[13px] text-white/65">
-                  czech-craft → craftlist · both sites in one tab
+                  czech-craft → craftlist → minecraftservery · all sites in one tab
                 </span>
               </span>
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/25">

@@ -19,7 +19,7 @@ import {
 } from "./lib";
 
 type View = "s1" | "s2" | "ready";
-const SITES: SiteId[] = ["czech", "craftlist"];
+const SITES: SiteId[] = ["czech", "craftlist", "minecraftservery"];
 
 export default function App() {
   const [nick, setNickState] = useState(() => getNick());
@@ -69,7 +69,7 @@ export default function App() {
       if (!data || data.__majncraft !== 1) return;
       if (data.type !== "cooldown") return;
       const site = data.site as SiteId | undefined;
-      if (site !== "czech" && site !== "craftlist") return;
+      if (!site || !SITES.includes(site)) return;
       setStatus((prev) => {
         const next: Status = { ...prev };
         if (data.until && data.until > Date.now()) {
@@ -201,14 +201,14 @@ export default function App() {
         <div className="absolute inset-0 bg-gradient-to-b from-pine-deep/92 via-pine-deep/86 to-pine-deep/96" />
         <div className="relative mx-auto max-w-[1240px] px-5 py-14 sm:px-8 sm:py-16">
           <p className="max-w-[20ch] font-display text-[clamp(26px,4vw,42px)] font-semibold leading-[1.08] tracking-[-0.02em] text-white">
-            Two votes a day keep Majncraft on the list.
+            Daily votes keep Majncraft on the list.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-between gap-4 border-t border-white/15 pt-5">
             <span className="micro micro-light">
               Majncraft vote helper · unaffiliated fan tool
             </span>
             <span className="micro micro-light">
-              czech-craft.eu · craftlist.cz
+              czech-craft.eu · craftlist.cz · minecraftservery.eu
             </span>
           </div>
         </div>

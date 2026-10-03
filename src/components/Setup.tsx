@@ -133,7 +133,7 @@ export default function Setup({
             nickname
           </h1>
           <p className="mx-auto mt-4 max-w-[38ch] text-[14.5px] leading-[1.7] text-muted">
-            This gets saved in your browser and used to fill both vote forms
+            This gets saved in your browser and used to fill vote forms
             automatically.
           </p>
         </div>
@@ -283,8 +283,8 @@ export default function Setup({
               You are all set
             </h2>
             <p className="mt-1.5 text-[13.5px] leading-[1.65] text-muted">
-              The script will automatically fill both vote forms. You just need
-              to solve the captcha on each site when it appears.
+              The script will automatically fill vote forms. You just need to
+              solve the captcha on each site when it appears.
             </p>
           </div>
         </div>

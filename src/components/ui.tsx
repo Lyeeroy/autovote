@@ -63,6 +63,26 @@ export function ListGlyph({ className = "" }: { className?: string }) {
   );
 }
 
+export function ServerGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="6" rx="2" />
+      <rect x="3" y="14" width="18" height="6" rx="2" />
+      <line x1="7" y1="7" x2="7.01" y2="7" />
+      <line x1="7" y1="17" x2="7.01" y2="17" />
+    </svg>
+  );
+}
+
 export function StatusPill({
   ready,
   label,

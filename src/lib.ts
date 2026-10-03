@@ -1,4 +1,4 @@
-export type SiteId = "czech" | "craftlist";
+export type SiteId = "czech" | "craftlist" | "minecraftservery";
 export type Cooldown = { until: number; raw?: string };
 export type Status = Partial<Record<SiteId, Cooldown>> & { updated?: number };
 
@@ -9,12 +9,14 @@ export const SETUP_DONE_KEY = "majncraft_setup_done";
 export const scriptText = `// ==UserScript==
 // @name         Majncraft Vote Automator
 // @namespace    http://tampermonkey.net/
-// @version      3.3
-// @description  Accurately parses durations vs clock times on Craftlist & Czech-Craft.
+// @version      3.4
+// @description  Accurately parses durations vs clock times on Czech-Craft, Craftlist & MinecraftServery.
 // @author       You
 // @match        https://czech-craft.eu/*
 // @match        https://craftlist.cz/*
 // @match        https://*.craftlist.cz/*
+// @match        https://minecraftservery.eu/*
+// @match        https://*.minecraftservery.eu/*
 // @match        https://www.google.com/recaptcha/api2/anchor*
 // @match        https://www.recaptcha.net/recaptcha/api2/anchor*
 // @match        https://recaptcha.net/recaptcha/api2/anchor*
@@ -26,7 +28,7 @@ export const scriptText = `// ==UserScript==
     'use strict';
 
     var host = window.location.hostname;
-    console.log('[Majncraft] === BOOT v3.3 ===', host, window.location.href);
+    console.log('[Majncraft] === BOOT v3.4 ===', host, window.location.href);
 
     var bootTime = Date.now();
     var MIN_ACTION_DELAY = 1000;
@@ -60,8 +62,9 @@ export const scriptText = `// ==UserScript==
 
     var IS_CZECH = host.indexOf('czech-craft.eu') !== -1;
     var IS_CRAFTLIST = host.indexOf('craftlist.cz') !== -1;
-    if (!IS_CZECH && !IS_CRAFTLIST) return;
-    var SITE = IS_CZECH ? 'czech' : 'craftlist';
+    var IS_SERVERY = host.indexOf('minecraftservery.eu') !== -1;
+    if (!IS_CZECH && !IS_CRAFTLIST && !IS_SERVERY) return;
+    var SITE = IS_CZECH ? 'czech' : (IS_CRAFTLIST ? 'craftlist' : 'minecraftservery');
     console.log('[Majncraft] site =', SITE);
 
     var params = new URLSearchParams(window.location.search);
@@ -100,6 +103,12 @@ export const scriptText = `// ==UserScript==
 
     /* ---- nickname ---- */
     var urlNick = params.get('user') || params.get('nickname');
+    if (!urlNick && IS_SERVERY) {
+        var mPath = window.location.pathname.match(/\\/vote\\/([^\\/?#]+)/i);
+        if (mPath) {
+            urlNick = decodeURIComponent(mPath[1]);
+        }
+    }
     if (urlNick) { try { sessionStorage.setItem('mjNick', urlNick); } catch (e) {} }
     var nickname = urlNick;
     if (!nickname) { try { nickname = sessionStorage.getItem('mjNick'); } catch (e) {} }
@@ -147,7 +156,7 @@ export const scriptText = `// ==UserScript==
         var banEl = document.querySelector('.alert.alert-danger, .alert-custom');
         if (banEl) {
             var banTxt = banEl.textContent || '';
-            var mBan = banTxt.match(/(?:vyprší|ban|znemožněno)[^\d\n]{1,50}?(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i);
+            var mBan = banTxt.match(/(?:vyprší|ban|znemožněno)[^\\d\\n]{1,50}?(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?/i);
             if (mBan) {
                 var dObj = new Date(
                     parseInt(mBan[3], 10),
@@ -170,7 +179,7 @@ export const scriptText = `// ==UserScript==
             if (!txt) return null;
 
             // 3a. DURATION: "za HH:MM:SS" or "za HH:MM"
-            var mDurClock = txt.match(/(?:za|zbývá|zbývající\s+čas)[^\d\n]{0,30}?(\d{1,2}):(\d{2})(?::(\d{2}))?/i);
+            var mDurClock = txt.match(/(?:za|zbývá|zbývající\\s+čas)[^\\d\\n]{0,30}?(\\d{1,2}):(\\d{2})(?::(\\d{2}))?/i);
             if (mDurClock) {
                 var dH = parseInt(mDurClock[1], 10);
                 var dM = parseInt(mDurClock[2], 10);
@@ -183,7 +192,7 @@ export const scriptText = `// ==UserScript==
             }
 
             // 3b. DURATION: "za X hodin a Y minut" / "za X minut"
-            var mRelWords = txt.match(/(?:za|zbývá|zbývající\s+čas)[^\d\n]{0,30}?(?:(\d+)\s*(?:hodin[yu]?|hod|h|hours?))?\s*(?:a\s*)?(?:(\d+)\s*(?:minut[y]?|min|m|minutes?))?\s*(?:a\s*)?(?:(\d+)\s*(?:sekund[y]?|sek|s|seconds?))?/i);
+            var mRelWords = txt.match(/(?:za|zbývá|zbývající\\s+čas)[^\\d\\n]{0,30}?(?:(\\d+)\\s*(?:hodin[yu]?|hod|h|hours?))?\\s*(?:a\\s*)?(?:(\\d+)\\s*(?:minut[y]?|min|m|minutes?))?\\s*(?:a\\s*)?(?:(\\d+)\\s*(?:sekund[y]?|sek|s|seconds?))?/i);
             if (mRelWords && (mRelWords[1] || mRelWords[2] || mRelWords[3])) {
                 var wh = parseInt(mRelWords[1] || '0', 10);
                 var wm = parseInt(mRelWords[2] || '0', 10);
@@ -196,18 +205,18 @@ export const scriptText = `// ==UserScript==
             }
 
             // 3c. CLOCK TIME: "v HH:MM" or "ve HH:MM" (explicit future target time)
-            var mClockTarget = txt.match(/(?:znovu|další\s+hlas|nejdříve|až|bude\s+možné|odeslat|poslat|hlasovat)[^\d\n]{1,40}?(?:v|ve)\s*(\d{1,2}:\d{2}(?::\d{2})?)/i);
+            var mClockTarget = txt.match(/(?:znovu|další\\s+hlas|nejdříve|až|bude\\s+možné|odeslat|poslat|hlasovat)[^\\d\\n]{1,40}?(?:v|ve)\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
             if (mClockTarget) {
                 var clkTarget = clockToFutureTime(mClockTarget[1]);
                 if (clkTarget > Date.now()) return { raw: mClockTarget[1], until: clkTarget };
             }
 
             // 3d. czech-craft format: "nejdříve v HH:MM(:SS)"
-            var mCC = txt.match(/nejdříve\s+v\s*(\d{1,2}:\d{2}(?::\d{2})?)/i);
+            var mCC = txt.match(/nejdříve\\s+v\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
             if (mCC) return { raw: mCC[1], until: clockToFutureTime(mCC[1]) };
 
             // 3e. Past vote time: "Již jsi hlasoval v 14:30" (add 2h cooldown)
-            var mPast = txt.match(/(?:již|už)\s+(?:j?si|jste|byl|hráč)\s+hlasoval[^\d\n]{1,30}?(?:v|ve)\s*(\d{1,2}:\d{2}(?::\d{2})?)/i);
+            var mPast = txt.match(/(?:již|už)\\s+(?:j?si|jste|byl|hráč)\\s+hlasoval[^\\d\\n]{1,30}?(?:v|ve)\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/i);
             if (mPast) {
                 var p = mPast[1].split(':').map(Number);
                 var votedAt = new Date();
@@ -226,7 +235,10 @@ export const scriptText = `// ==UserScript==
             '#_message_1',
             '.alert',
             '.modal-body',
-            '.modal-content'
+            '.modal-content',
+            '.modal-card',
+            '.notification',
+            '.message'
         ];
 
         for (var i = 0; i < msgSelectors.length; i++) {
@@ -237,7 +249,7 @@ export const scriptText = `// ==UserScript==
             }
         }
 
-        var fullBody = (document.body ? (document.body.innerText + '\n' + document.body.textContent) : '');
+        var fullBody = (document.body ? (document.body.innerText + '\\n' + document.body.textContent) : '');
         return checkText(fullBody);
     }
 
@@ -257,25 +269,50 @@ export const scriptText = `// ==UserScript==
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('blur', { bubbles: true }));
     }
-    function recaptchaDone() {
+    function captchaDone() {
         var ta = document.getElementById('g-recaptcha-response');
-        return ta && ta.value && ta.value.trim() !== '';
+        if (ta && ta.value && ta.value.trim() !== '') return true;
+        var cf = document.querySelector('[name="cf-turnstile-response"]');
+        if (cf && cf.value && cf.value.trim() !== '') return true;
+        var h = document.querySelector('[name="h-captcha-response"]');
+        if (h && h.value && h.value.trim() !== '') return true;
+        return false;
     }
     function focusCaptcha() {
-        var f = document.querySelector('iframe[title="reCAPTCHA"], iframe[src*="recaptcha/api2/anchor"]');
+        var f = document.querySelector('iframe[title="reCAPTCHA"], iframe[src*="recaptcha/api2/anchor"], iframe[src*="challenges.cloudflare.com"]');
         if (f) try { f.focus(); } catch (e) {}
     }
 
     /* ---- actions ---- */
     var acted = false;
 
-    function chainNow() {
+    function chainToCraftlist() {
         if (acted) return;
-        if (!canAct()) { setTimeout(chainNow, 300); return; }
+        if (!canAct()) { setTimeout(chainToCraftlist, 300); return; }
         acted = true;
         var url = 'https://craftlist.cz/majncraft-cz?nickname=' + encodeURIComponent(nickname || '');
         console.log('[Majncraft] NAVIGATING to craftlist:', url);
         window.location.href = url;
+    }
+
+    function chainToServery() {
+        if (acted) return;
+        if (!canAct()) { setTimeout(chainToServery, 300); return; }
+        acted = true;
+        var url = 'https://minecraftservery.eu/server/majncraftcz/vote/' + encodeURIComponent(nickname || '');
+        console.log('[Majncraft] NAVIGATING to minecraftservery:', url);
+        window.location.href = url;
+    }
+
+    function nextInChain() {
+        if (IS_CZECH) {
+            chainToCraftlist();
+        } else if (IS_CRAFTLIST) {
+            chainToServery();
+        } else {
+            acted = true;
+            tryCloseAfter(1500);
+        }
     }
 
     function onCooldown(cd) {
@@ -284,12 +321,7 @@ export const scriptText = `// ==UserScript==
         console.log('[Majncraft] cooldown on', SITE, '→', cd.raw);
         report({ type: 'cooldown', site: SITE, until: cd.until, raw: cd.raw });
         if (isManual) { acted = true; return; }
-        if (IS_CZECH) {
-            chainNow();
-        } else {
-            acted = true;
-            tryCloseAfter(1500);
-        }
+        nextInChain();
     }
 
     /* ---- main execution ---- */
@@ -309,12 +341,7 @@ export const scriptText = `// ==UserScript==
         var rawTime = postCd ? postCd.raw : formatClock(until);
         report({ type: 'cooldown', site: SITE, until: until, raw: rawTime });
         if (isManual) { acted = true; return; }
-        if (IS_CZECH) {
-            chainNow();
-        } else {
-            acted = true;
-            tryCloseAfter(1500);
-        }
+        nextInChain();
         return;
     }
 
@@ -344,7 +371,7 @@ export const scriptText = `// ==UserScript==
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             }
         });
-    } else {
+    } else if (IS_CRAFTLIST) {
         var modalBtn = document.querySelector('[data-target*="vote"], [data-toggle="modal"][href*="vote"], a[href="#voteModal"], .btn-vote:not(.disabled)');
         if (modalBtn) { try { modalBtn.click(); } catch (e) {} }
 
@@ -364,10 +391,21 @@ export const scriptText = `// ==UserScript==
         setTimeout(function () {
             try { if (typeof check === 'function') { check(); } } catch (e) {}
         }, 800);
+    } else if (IS_SERVERY) {
+        var serveryModalBtn = document.querySelector('button.button.is-primary');
+        if (serveryModalBtn && serveryModalBtn.textContent.indexOf('Hlasovat pro server') !== -1) {
+            try { serveryModalBtn.click(); } catch (e) {}
+        }
+
+        waitFor('input[placeholder="Přezdívka"], input.input.is-mid', function (el) {
+            if (el.value !== nickname) {
+                setVal(el, nickname);
+            }
+        });
     }
 
-    /* 5. Focus reCAPTCHA */
-    waitFor('iframe[title="reCAPTCHA"]', function () {
+    /* 5. Focus captcha */
+    waitFor('iframe[title="reCAPTCHA"], iframe[src*="recaptcha/api2/anchor"], iframe[src*="challenges.cloudflare.com"]', function () {
         focusCaptcha();
         setTimeout(focusCaptcha, 800);
         setTimeout(focusCaptcha, 1600);
@@ -375,7 +413,7 @@ export const scriptText = `// ==UserScript==
 
     /* 6. Wait for captcha -> submit -> record cooldown */
     var capTimer = setInterval(function () {
-        if (!recaptchaDone()) { focusCaptcha(); return; }
+        if (!captchaDone()) { focusCaptcha(); return; }
         clearInterval(capTimer);
 
         if (IS_CZECH) {
@@ -384,10 +422,10 @@ export const scriptText = `// ==UserScript==
                 btn.click();
                 setTimeout(function () {
                     if (acted) return;
-                    chainNow();
+                    nextInChain();
                 }, 4000);
             });
-        } else {
+        } else if (IS_CRAFTLIST) {
             var btns = document.querySelectorAll('button.ajax.btn.btn-primary');
             for (var i = 0; i < btns.length; i++) {
                 if (btns[i].textContent.indexOf('Hlasovat za server') !== -1) {
@@ -414,6 +452,36 @@ export const scriptText = `// ==UserScript==
                     var defaultRaw = formatClock(defaultUntil);
                     report({ type: 'cooldown', site: 'craftlist', until: defaultUntil, raw: defaultRaw });
                     acted = true;
+                    if (!isManual) nextInChain();
+                }
+            }, 400);
+        } else if (IS_SERVERY) {
+            var sBtns = document.querySelectorAll('button.button.is-primary');
+            for (var j = 0; j < sBtns.length; j++) {
+                if (sBtns[j].textContent.indexOf('Odeslat hlas') !== -1) {
+                    try { sessionStorage.setItem(submittedKey, '1'); } catch (e) {}
+                    sBtns[j].click();
+                    break;
+                }
+            }
+
+            var sPostTries = 0;
+            var pollPostVoteServery = setInterval(function () {
+                var c = detectCD();
+                if (c) {
+                    clearInterval(pollPostVoteServery);
+                    if (typeof cdTimer !== 'undefined') clearInterval(cdTimer);
+                    onCooldown(c);
+                    return;
+                }
+                if (++sPostTries > 15) {
+                    clearInterval(pollPostVoteServery);
+                    if (typeof cdTimer !== 'undefined') clearInterval(cdTimer);
+                    if (acted) return;
+                    var serveryUntil = Date.now() + 2 * 60 * 60 * 1000;
+                    var serveryRaw = formatClock(serveryUntil);
+                    report({ type: 'cooldown', site: 'minecraftservery', until: serveryUntil, raw: serveryRaw });
+                    acted = true;
                     if (!isManual) tryCloseAfter(1500);
                 }
             }, 400);
@@ -426,11 +494,11 @@ export const scriptText = `// ==UserScript==
         var lastCD = detectCD();
         if (lastCD) { onCooldown(lastCD); return; }
         if (isManual) return;
-        if (IS_CZECH) chainNow();
-        else tryCloseAfter(1000);
+        nextInChain();
     }, 90000);
 
-})();`;
+})();
+`;
 
 export function getNick(): string {
   try {
@@ -465,7 +533,7 @@ export function markSetupDone(): void {
 }
 
 export function buildUrls(nick: string) {
-  const e = encodeURIComponent(nick);
+  const e = encodeURIComponent(nick.trim());
   const manual = "&manual=1";
   return {
     chain: "https://czech-craft.eu/server/majncraft/vote/?user=" + e,
@@ -473,6 +541,8 @@ export function buildUrls(nick: string) {
       "https://czech-craft.eu/server/majncraft/vote/?user=" + e + manual,
     craftlistManual:
       "https://craftlist.cz/majncraft-cz?nickname=" + e + manual,
+    minecraftserveryManual:
+      "https://minecraftservery.eu/server/majncraftcz/vote/" + (e || "") + "?manual=1",
   };
 }
 

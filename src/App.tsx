@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dawn from "./assets/dawn.jpg";
+import levelup from "./assets/levelup.mp3";
 import Ready from "./components/Ready";
 import Setup from "./components/Setup";
 import { Mark } from "./components/ui";
@@ -7,9 +8,11 @@ import {
   clearAll,
   clearStatus,
   getNick,
+  getSound,
   isSetupDone,
   loadStatus,
   markSetupDone,
+  saveSound,
   saveStatus,
   setNick,
   STATUS_KEY,
@@ -29,8 +32,10 @@ export default function App() {
   });
   const [status, setStatus] = useState<Status>(() => loadStatus());
   const [now, setNow] = useState(() => Date.now());
+  const [soundOn, setSoundOn] = useState(() => getSound());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const pushToast = useCallback((m: string) => {
     setToast(m);
@@ -108,6 +113,37 @@ export default function App() {
     };
   }, []);
 
+  /* the chime — played when a lock window runs out, and as a preview on switch-on */
+  const playCue = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.currentTime = 0;
+    el.volume = 0.7;
+    void el.play().catch(() => {
+      pushToast("Browser blocked the sound — click the page once");
+    });
+  }, [pushToast]);
+
+  const setSound = useCallback(
+    (on: boolean) => {
+      saveSound(on);
+      setSoundOn(on);
+      if (on) playCue();
+    },
+    [playCue],
+  );
+
+  /* a site left the locked set because its clock ran out — not because it was cleared */
+  const prevStatusRef = useRef<Status>(status);
+  useEffect(() => {
+    const ended = SITES.some((s) => {
+      const before = prevStatusRef.current[s];
+      return !!before && before.until <= now && !status[s];
+    });
+    prevStatusRef.current = status;
+    if (ended && soundOn) playCue();
+  }, [now, status, soundOn, playCue]);
+
   const commitNick = useCallback((n: string) => {
     setNick(n);
     setNickState(n);
@@ -167,6 +203,8 @@ export default function App() {
             nick={nick}
             status={status}
             now={now}
+            soundOn={soundOn}
+            onSound={setSound}
             onNick={commitNick}
             onToast={pushToast}
             onClearStatus={() => {
@@ -220,6 +258,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      <audio ref={audioRef} src={levelup} preload="auto" className="hidden" />
 
       <div
         role="status"

@@ -16,4 +16,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    // the unlock chime has to travel inside the single file, not beside it
+    assetsInlineLimit: 1024 * 1024,
+  },
 });

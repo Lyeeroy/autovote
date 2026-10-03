@@ -9,12 +9,22 @@ import {
   type SiteId,
   type Status,
 } from "../lib";
-import { Arrow, BannerGlyph, ListGlyph, ScriptBlock, ServerGlyph, StatusPill } from "./ui";
+import {
+  Arrow,
+  BannerGlyph,
+  ListGlyph,
+  ScriptBlock,
+  ServerGlyph,
+  StatusPill,
+  Switch,
+} from "./ui";
 
 type Props = {
   nick: string;
   status: Status;
   now: number;
+  soundOn: boolean;
+  onSound: (on: boolean) => void;
   onNick: (n: string) => void;
   onToast: (m: string) => void;
   onClearStatus: () => void;
@@ -62,6 +72,8 @@ export default function Ready({
   nick,
   status,
   now,
+  soundOn,
+  onSound,
   onNick,
   onToast,
   onClearStatus,
@@ -367,6 +379,22 @@ export default function Ready({
               >
                 Clear
               </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
+              <div className="min-w-0">
+                <div className="micro">Unlock sound</div>
+                <div className="mt-1 truncate text-[13px] text-muted">
+                  {soundOn
+                    ? "Chimes the moment a cooldown ends"
+                    : "Silent — you only get the visual clock"}
+                </div>
+              </div>
+              <Switch
+                checked={soundOn}
+                onChange={onSound}
+                label="Play a sound when a cooldown ends"
+              />
             </div>
 
             <div className="flex items-center justify-between gap-3 px-5 py-4">

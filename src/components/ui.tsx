@@ -110,6 +110,37 @@ export function StatusPill({
   );
 }
 
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors duration-200",
+        checked ? "border-moss bg-moss" : "border-rule bg-warm",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "absolute top-[2px] h-[16px] w-[16px] rounded-full bg-card shadow-[0_1px_2px_rgba(23,32,27,0.3)] transition-[left] duration-200",
+          checked ? "left-[18px]" : "left-[2px]",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
 export function ScriptBlock({ onToast }: { onToast: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [wrap, setWrap] = useState(false);

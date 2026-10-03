@@ -6,6 +6,7 @@ export type Status = Partial<Record<SiteId, Cooldown>> & { updated?: number };
 export const STORAGE_KEY = "majncraft_nickname";
 export const STATUS_KEY = "majncraft_status";
 export const SETUP_DONE_KEY = "majncraft_setup_done";
+export const SOUND_KEY = "majncraft_sound";
 
 export const scriptText = `// ==UserScript==
 // @name         Majncraft Vote Automator
@@ -584,6 +585,24 @@ export function clearAll(): void {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STATUS_KEY);
     localStorage.removeItem(SETUP_DONE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** on unless the fan turned it off */
+export function getSound(): boolean {
+  try {
+    const v = localStorage.getItem(SOUND_KEY);
+    return v === null ? true : v === "1";
+  } catch {
+    return true;
+  }
+}
+
+export function saveSound(on: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, on ? "1" : "0");
   } catch {
     /* storage unavailable */
   }
